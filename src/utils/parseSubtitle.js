@@ -5,11 +5,14 @@
  */
 
 export function parseSubtitle(text, ext) {
+  // Normalisasi baris baru (CRLF atau CR menjadi LF)
+  const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  
   switch (ext.toLowerCase()) {
-    case 'srt': return parseSRT(text);
-    case 'vtt': return parseVTT(text);
+    case 'srt': return parseSRT(normalizedText);
+    case 'vtt': return parseVTT(normalizedText);
     case 'ass':
-    case 'ssa': return parseASS(text);
+    case 'ssa': return parseASS(normalizedText);
     default: throw new Error(`Format .${ext} tidak didukung`);
   }
 }

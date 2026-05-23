@@ -30,11 +30,12 @@ export function downloadBlob(blob, filename) {
 }
 
 /**
- * Generate nama file output dengan suffix _translated
- * Contoh: movie.srt → movie_translated.srt
+ * Generate nama file output dengan suffix bahasa tujuan
+ * Contoh: movie.srt → movie_Bahasa Indonesia.srt
  */
-export function getOutputFilename(originalName) {
+export function getOutputFilename(originalName, targetLang) {
+  const langSuffix = targetLang ? `_${targetLang}` : '_translated';
   const lastDot = originalName.lastIndexOf('.');
-  if (lastDot === -1) return originalName + '_translated';
-  return originalName.slice(0, lastDot) + '_translated' + originalName.slice(lastDot);
+  if (lastDot === -1) return originalName + langSuffix;
+  return originalName.slice(0, lastDot) + langSuffix + originalName.slice(lastDot);
 }

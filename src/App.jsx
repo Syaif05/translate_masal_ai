@@ -163,7 +163,7 @@ export default function App() {
         }
 
         const outputContent = rebuildSubtitle(blocks, ext, text);
-        const outputName = getOutputFilename(item.file.name);
+        const outputName = getOutputFilename(item.file.name, targetLang);
 
         setResults(prev => ({
           ...prev,
