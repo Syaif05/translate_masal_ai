@@ -14,7 +14,13 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'API key belum dikonfigurasi di server' });
   }
 
-  const { texts, targetLang, model = 'gpt-4o-mini' } = req.body;
+  const { texts, targetLang, model = 'gpt-4o-mini', password } = req.body;
+
+  // Validasi password
+  const appPassword = process.env.APP_PASSWORD;
+  if (appPassword && password !== appPassword) {
+    return res.status(401).json({ error: 'Password salah atau tidak diberikan' });
+  }
 
   // Validasi input
   if (!texts || !Array.isArray(texts) || texts.length === 0) {

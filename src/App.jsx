@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { parseSubtitle } from './utils/parseSubtitle';
 import { rebuildSubtitle } from './utils/rebuildSubtitle';
 import { createZip, downloadBlob, getOutputFilename } from './utils/zipHelper';
@@ -29,11 +29,60 @@ function getExt(name) {
 }
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   const [files, setFiles] = useState([]);           // List file yang diupload
   const [targetLang, setTargetLang] = useState('Bahasa Indonesia');
   const [model, setModel] = useState('gpt-4o-mini');
   const [isTranslating, setIsTranslating] = useState(false);
   const [results, setResults] = useState({});       // { fileId: { name, content } }
+
+  // Cek apakah sudah pernah login sebelumnya
+  useEffect(() => {
+    const savedPassword = localStorage.getItem('app_password');
+    if (savedPassword) {
+      verifyPassword(savedPassword);
+    }
+  }, []);
+
+  const verifyPassword = async (pass) => {
+    setIsLoggingIn(true);
+    setLoginError('');
+    try {
+      const res = await fetch('/api/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pass }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setIsAuthenticated(true);
+        setPassword(pass);
+        localStorage.setItem('app_password', pass);
+      } else {
+        setLoginError(data.error || 'Password salah!');
+        localStorage.removeItem('app_password');
+      }
+    } catch (err) {
+      setLoginError('Koneksi server gagal');
+    }
+    setIsLoggingIn(false);
+  };
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (!password) return;
+    verifyPassword(password);
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setPassword('');
+    localStorage.removeItem('app_password');
+  };
 
   // Tambah file baru, hindari duplikat
   const addFiles = useCallback((newFiles) => {
@@ -73,7 +122,7 @@ export default function App() {
     const response = await fetch('/api/translate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texts, targetLang: lang, model: mdl }),
+      body: JSON.stringify({ texts, targetLang: lang, model: mdl, password }),
     });
 
     if (!response.ok) {
@@ -124,6 +173,12 @@ export default function App() {
         updateFile(item.id, { status: 'done', progress: 100 });
 
       } catch (err) {
+        // Jika error autentikasi (401), paksa logout
+        if (err.message.toLowerCase().includes('password')) {
+          handleLogout();
+          alert('Sesi password telah berakhir atau tidak valid.');
+          break;
+        }
         updateFile(item.id, { status: 'error', error: err.message, progress: 0 });
       }
     }
@@ -150,21 +205,66 @@ export default function App() {
   const doneCount = files.filter(f => f.status === 'done').length;
   const hasFiles = files.length > 0;
 
+  // Render Layar Login
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white max-w-sm w-full rounded-2xl shadow-xl p-8 border border-gray-100">
+          <div className="text-center mb-6">
+            <div className="text-4xl mb-3">🔒</div>
+            <h1 className="text-xl font-bold text-gray-900">Area Terbatas</h1>
+            <p className="text-sm text-gray-500 mt-1">Masukkan password akses untuk menggunakan alat ini.</p>
+          </div>
+          
+          <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            <div>
+              <input
+                type="password"
+                placeholder="Password rahasia..."
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                autoFocus
+              />
+              {loginError && <p className="text-red-500 text-xs mt-2 font-medium">{loginError}</p>}
+            </div>
+            
+            <button
+              type="submit"
+              disabled={isLoggingIn || !password}
+              className="w-full bg-gray-900 text-white rounded-lg px-4 py-3 text-sm font-medium hover:bg-gray-800 disabled:opacity-50 transition-colors"
+            >
+              {isLoggingIn ? 'Memverifikasi...' : 'Masuk Aplikasi'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Render Aplikasi Utama
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900">Subtitle Translator</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Terjemahkan file subtitle secara batch menggunakan AI
-          </p>
+        <div className="mb-6 flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">Subtitle Translator</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Terjemahkan file subtitle secara batch menggunakan AI
+            </p>
+          </div>
+          <button 
+            onClick={handleLogout}
+            className="text-sm text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-md transition-colors border border-transparent hover:border-red-100"
+          >
+            Logout
+          </button>
         </div>
 
         {/* Info keamanan */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-5 text-sm text-blue-800">
-          🔒 <strong>Aman:</strong> API key tersimpan di server, tidak pernah terekspos ke browser.
-          Terjemahan dilakukan melalui server proxy yang aman.
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-5 text-sm text-green-800 flex items-center justify-between">
+          <span>🔒 <strong>Aman:</strong> Sesi Anda diamankan dengan password. API Key tersembunyi.</span>
         </div>
 
         {/* Kontrol */}
@@ -216,7 +316,7 @@ export default function App() {
               { label: 'Selesai', value: doneCount, color: 'text-green-600' },
               { label: 'Gagal', value: files.filter(f => f.status === 'error').length, color: 'text-red-600' },
             ].map(s => (
-              <div key={s.label} className="bg-white border rounded-lg p-3 text-center">
+              <div key={s.label} className="bg-white border rounded-lg p-3 text-center shadow-sm">
                 <div className="text-xs text-gray-400">{s.label}</div>
                 <div className={`text-xl font-medium ${s.color || 'text-gray-800'}`}>{s.value}</div>
               </div>
@@ -228,7 +328,7 @@ export default function App() {
         {hasFiles && (
           <div className="flex flex-col gap-2 mb-4">
             {files.map(item => (
-              <div key={item.id} className="bg-white border rounded-lg px-4 py-3 flex items-center gap-3">
+              <div key={item.id} className="bg-white border rounded-lg px-4 py-3 flex items-center gap-3 shadow-sm">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm truncate text-gray-800">{item.file.name}</div>
                   <div className="text-xs text-gray-400">
@@ -250,7 +350,7 @@ export default function App() {
                   {item.status === 'done' && (
                     <button
                       onClick={() => handleDownloadOne(item.id)}
-                      className="text-xs px-3 py-1 border rounded-md hover:bg-gray-50"
+                      className="text-xs px-3 py-1 border rounded-md hover:bg-gray-50 font-medium"
                     >
                       Download
                     </button>
@@ -281,17 +381,17 @@ export default function App() {
 
         {/* Action Buttons */}
         {hasFiles && (
-          <div className="flex gap-3 justify-end">
+          <div className="flex gap-3 justify-end mt-6 border-t pt-4 border-gray-100">
             <button
               onClick={() => setFiles([])}
-              className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
+              className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50 font-medium"
             >
               Hapus Semua
             </button>
             {doneCount > 1 && (
               <button
                 onClick={handleDownloadAll}
-                className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
+                className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50 font-medium"
               >
                 Download ZIP
               </button>
@@ -299,7 +399,7 @@ export default function App() {
             <button
               onClick={handleTranslate}
               disabled={isTranslating}
-              className="px-5 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50"
+              className="px-5 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 font-medium shadow-sm"
             >
               {isTranslating ? 'Memproses...' : 'Terjemahkan Semua'}
             </button>
